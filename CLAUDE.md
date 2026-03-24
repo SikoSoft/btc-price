@@ -44,7 +44,7 @@ bitcoin_analyzer/
     └── styles.css
 ```
 
-## What has been built (Layer 1 complete)
+## What has been built (Layers 1 & 2 complete)
 
 - Full price data pipeline operational
 - Bitfinex provider: 4,706 rows of daily OHLCV, 2013-03-31 to present, single HTTP call, no auth
@@ -53,6 +53,16 @@ bitcoin_analyzer/
 - CLI script working: `scripts/fetch_prices.py`
 - 7 gap dates around Aug 2–9 2016 are expected (Bitfinex hack/trading suspension)
 - CoinGecko kept as optional provider but dropped as default (now requires key even for free tier)
+
+### Layer 2 — analysis/ (complete)
+
+- `analysis/metrics.py` — `to_dataframe()`, `daily_returns()`, `rolling_momentum()`, `rolling_volatility()`, `rolling_atr()`
+- `analysis/anomalies.py` — `detect_reversals()`, `detect_amplifications()`, `detect_stagnations()` (all pure functions, accept df + config dict)
+- `analysis/scoring.py` — `run_all()`, `top_n()`, `hash_config()`
+- `scripts/run_analysis.py` — CLI to run detection and print results, supports `--lookback`, `--lookforward`, `--stag-window`, `--top-n`, `--json`
+- `config.py` — extended with analysis defaults + `default_analysis_config()` factory
+- Verified against full 4,706-row dataset — produces clean 30 anomalies (10 per category)
+- Stagnation detector uses greedy non-overlapping suppression so results represent distinct quiet periods
 
 ## Price anomaly types (3 categories, top 10 each = 30 total)
 
@@ -109,9 +119,10 @@ Reuters, BBC, CNN, Fox News, Financial Times, CoinDesk — via GDELT Project API
 
 ## Next step
 
-Build `analysis/` layer:
-1. `analysis/metrics.py` — rolling momentum, volatility, ATR helpers
-2. `analysis/anomalies.py` — reversal, amplification, stagnation detectors
-3. `analysis/scoring.py` — rank and select top 10 per category
+Build `news/` layer:
+1. `news/sources.py` — configurable list of news domains (Reuters, BBC, CNN, Fox, FT, CoinDesk)
+2. `news/providers/base.py` — abstract NewsProvider interface
+3. `news/providers/gdelt.py` — GDELT implementation (free, no key, back to 2013)
+4. `news/aggregator.py` — fetch & cache top 10 stories per anomaly window (3 days prior)
 
-All functions should accept `pd.DataFrame` + config dict, return scored DataFrame.
+Then `db/database.py` needs `anomalies` and `news_articles` tables added to the schema.
