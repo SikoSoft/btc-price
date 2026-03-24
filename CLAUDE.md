@@ -129,11 +129,27 @@ Reuters, BBC, CNN, Fox News, Financial Times, CoinDesk — via GDELT Project API
 
 **GDELT coverage note:** GDELT DOC 2.0 has a rolling lookback window (~1 year). Anomalies older than that return 0 articles — this is cached gracefully. The rate limit is 1 request/5 seconds; burst usage triggers a longer cooldown.
 
+### Layer 4 — api/ (complete)
+
+- `api/app.py` — FastAPI app with CORS middleware; registers all routers
+- `api/deps.py` — `get_db()` dependency; one SQLite connection per request, always closed
+- `api/routes/prices.py` — `GET /prices`, `GET /prices/status`
+- `api/routes/anomalies.py` — `POST /anomalies` (config-hash cache with completeness check), `GET /anomalies/cached`
+- `api/routes/news.py` — `GET /news/{id}`, `POST /news/{id}/fetch`, `POST /news/fetch-all`
+- `api/routes/config.py` — `GET /config/defaults`
+
+Start server: `uvicorn api.app:app --reload --port 8000`
+Interactive docs: `http://localhost:8000/docs`
+
+**Key decisions:**
+- Cache completeness check — `POST /anomalies` only trusts cache if all 3 types present (prevents partial cache from a prior interrupted run being served as complete)
+- `GET /news/{id}` returns `fetched: false` when news hasn't been fetched yet — frontend uses this to decide whether to trigger a fetch
+- `POST /news/fetch-all` is synchronous (may take several minutes for 30 anomalies at GDELT's 5s rate limit); returns a summary with per-anomaly article counts
+
 ## Next step
 
-Build `api/` layer:
-1. `api/app.py` — FastAPI application setup
-2. `api/routes/prices.py` — `GET /prices` → full OHLCV series for chart
-3. `api/routes/anomalies.py` — `POST /anomalies {config}` → run detection + return 30 anomalies (config-hash cache aware)
-4. `api/routes/news.py` — `GET /news/{anomaly_id}` → top 10 cached articles
-5. `api/routes/config.py` — `GET /config/defaults` → current default parameter values
+Build `web/` layer:
+1. `web/index.html` — page shell
+2. `web/chart.js` — TradingView Lightweight Charts candlestick chart + anomaly markers
+3. `web/controls.js` — parameter sliders/inputs, loading state, news panel
+4. `web/styles.css` — layout and styling
