@@ -117,12 +117,23 @@ Reuters, BBC, CNN, Fox News, Financial Times, CoinDesk — via GDELT Project API
 - **TradingView Lightweight Charts** — purpose-built financial charting library
 - **SQLite** — zero infrastructure, sufficient for this scale
 
+### Layer 3 — news/ (complete)
+
+- `news/sources.py` — configurable list of 6 source domains (Reuters, BBC, CNN, Fox News, FT, CoinDesk)
+- `news/providers/base.py` — abstract `NewsProvider` ABC
+- `news/providers/gdelt.py` — GDELT DOC 2.0 implementation; single combined query per anomaly; domain suffix matching (handles subdomains); 429 backoff with stderr warnings
+- `news/aggregator.py` — `NewsAggregator.run(anomaly_dicts)` fetches + caches news; `INSERT OR IGNORE` preserves `news_fetched_at` so cached anomalies are never re-fetched; empty results also cached to avoid repeated API misses
+- `scripts/fetch_news.py` — CLI with `--force-refresh`, `--window`, `--top-n`, `--anomaly ID`, `--json`
+- `db/database.py` — extended with `anomalies` + `news_articles` tables + `upsert_anomalies`, `get_anomalies`, `upsert_news_articles`, `get_news_for_anomaly`, `mark_news_fetched`
+- `config.py` — extended with `NEWS_WINDOW_DAYS`, `NEWS_TOP_N`, `GDELT_*` settings
+
+**GDELT coverage note:** GDELT DOC 2.0 has a rolling lookback window (~1 year). Anomalies older than that return 0 articles — this is cached gracefully. The rate limit is 1 request/5 seconds; burst usage triggers a longer cooldown.
+
 ## Next step
 
-Build `news/` layer:
-1. `news/sources.py` — configurable list of news domains (Reuters, BBC, CNN, Fox, FT, CoinDesk)
-2. `news/providers/base.py` — abstract NewsProvider interface
-3. `news/providers/gdelt.py` — GDELT implementation (free, no key, back to 2013)
-4. `news/aggregator.py` — fetch & cache top 10 stories per anomaly window (3 days prior)
-
-Then `db/database.py` needs `anomalies` and `news_articles` tables added to the schema.
+Build `api/` layer:
+1. `api/app.py` — FastAPI application setup
+2. `api/routes/prices.py` — `GET /prices` → full OHLCV series for chart
+3. `api/routes/anomalies.py` — `POST /anomalies {config}` → run detection + return 30 anomalies (config-hash cache aware)
+4. `api/routes/news.py` — `GET /news/{anomaly_id}` → top 10 cached articles
+5. `api/routes/config.py` — `GET /config/defaults` → current default parameter values

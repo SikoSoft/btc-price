@@ -129,6 +129,29 @@ STAGNATION_MIN_SCORE: float = float(
 TOP_N: int = int(os.environ.get("BTC_TOP_N", "10"))
 
 
+# ---------------------------------------------------------------------------
+# News / GDELT
+# ---------------------------------------------------------------------------
+
+# Number of days before an anomaly to search for related news.
+NEWS_WINDOW_DAYS: int = int(os.environ.get("BTC_NEWS_WINDOW_DAYS", "3"))
+
+# Maximum articles to store per anomaly.
+NEWS_TOP_N: int = int(os.environ.get("BTC_NEWS_TOP_N", "10"))
+
+# Seconds to sleep between GDELT requests to avoid rate-limiting.
+# GDELT enforces a hard limit of 1 request per 5 seconds.
+GDELT_SLEEP_SECONDS: float = float(
+    os.environ.get("BTC_GDELT_SLEEP_SECONDS", "5.0")
+)
+
+# Retry attempts for failed GDELT requests.
+GDELT_MAX_RETRIES: int = int(os.environ.get("BTC_GDELT_MAX_RETRIES", "3"))
+
+# HTTP timeout for GDELT requests (seconds).
+GDELT_TIMEOUT: int = int(os.environ.get("BTC_GDELT_TIMEOUT", "30"))
+
+
 def default_analysis_config() -> dict:
     """
     Return a config dict populated from the module-level constants above.

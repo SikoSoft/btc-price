@@ -51,6 +51,34 @@ CREATE TABLE IF NOT EXISTS fetch_log (
     end_date      TEXT    NOT NULL,
     rows_affected INTEGER NOT NULL
 );
+
+-- Detected price anomalies, keyed by (type, date, config_hash) so that
+-- changing analysis parameters invalidates only the affected results.
+CREATE TABLE IF NOT EXISTS anomalies (
+    id              TEXT PRIMARY KEY,   -- e.g. "reversal_2017-12-17"
+    type            TEXT NOT NULL,      -- 'reversal' | 'amplification' | 'stagnation'
+    date            TEXT NOT NULL,
+    score           REAL NOT NULL,
+    config_hash     TEXT NOT NULL,
+    metadata        TEXT,               -- JSON blob from analysis layer
+    news_fetched_at TEXT                -- NULL = news not yet fetched
+);
+
+-- Top-10 news articles per anomaly, cached so GDELT is never queried twice
+-- for the same anomaly.
+CREATE TABLE IF NOT EXISTS news_articles (
+    id            TEXT PRIMARY KEY,     -- "{anomaly_id}_{url_hash}"
+    anomaly_id    TEXT NOT NULL REFERENCES anomalies(id),
+    source_name   TEXT,
+    source_domain TEXT,
+    title         TEXT NOT NULL,
+    url           TEXT NOT NULL,
+    published_at  TEXT,
+    relevance     REAL DEFAULT 0.0
+);
+
+CREATE INDEX IF NOT EXISTS idx_anomalies_config ON anomalies(config_hash);
+CREATE INDEX IF NOT EXISTS idx_news_anomaly     ON news_articles(anomaly_id);
 """
 
 
@@ -241,3 +269,145 @@ def get_cache_status(conn: sqlite3.Connection) -> dict[str, Any]:
         "gaps":          gaps[:20],        # truncate for display
         "rows_by_source": source_counts,
     }
+
+
+# ---------------------------------------------------------------------------
+# Anomaly read/write
+# ---------------------------------------------------------------------------
+
+def upsert_anomalies(
+    conn: sqlite3.Connection,
+    anomalies: list[dict[str, Any]],
+) -> int:
+    """
+    Insert or replace anomaly rows.
+
+    Each dict must contain: id, type, date, score, config_hash.
+    Optional keys: metadata, news_fetched_at.
+    Returns the number of rows written.
+    """
+    if not anomalies:
+        return 0
+
+    # INSERT OR IGNORE preserves news_fetched_at on subsequent runs with the
+    # same anomaly ID — re-inserting with OR REPLACE would wipe it out and
+    # cause the aggregator to re-fetch news on every analysis run.
+    sql = """
+        INSERT OR IGNORE INTO anomalies
+            (id, type, date, score, config_hash, metadata, news_fetched_at)
+        VALUES
+            (:id, :type, :date, :score, :config_hash, :metadata, :news_fetched_at)
+    """
+    normalised = [
+        {
+            "id":              a["id"],
+            "type":            a["type"],
+            "date":            a["date"],
+            "score":           a["score"],
+            "config_hash":     a["config_hash"],
+            "metadata":        a.get("metadata"),
+            "news_fetched_at": a.get("news_fetched_at"),
+        }
+        for a in anomalies
+    ]
+    conn.executemany(sql, normalised)
+    conn.commit()
+    return len(normalised)
+
+
+def get_anomalies(
+    conn: sqlite3.Connection,
+    config_hash: str,
+) -> list[dict[str, Any]]:
+    """
+    Return all anomalies for a given config hash, sorted by type then score.
+    """
+    cursor = conn.execute(
+        """
+        SELECT id, type, date, score, config_hash, metadata, news_fetched_at
+        FROM   anomalies
+        WHERE  config_hash = ?
+        ORDER  BY type, score DESC
+        """,
+        (config_hash,),
+    )
+    columns = [col[0] for col in cursor.description]
+    return [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+
+def mark_news_fetched(
+    conn: sqlite3.Connection,
+    anomaly_id: str,
+    fetched_at: str,
+) -> None:
+    """Set news_fetched_at on an anomaly row to record that news was fetched."""
+    conn.execute(
+        "UPDATE anomalies SET news_fetched_at = ? WHERE id = ?",
+        (fetched_at, anomaly_id),
+    )
+    conn.commit()
+
+
+# ---------------------------------------------------------------------------
+# News article read/write
+# ---------------------------------------------------------------------------
+
+def upsert_news_articles(
+    conn: sqlite3.Connection,
+    articles: list[dict[str, Any]],
+) -> int:
+    """
+    Insert or replace news article rows.
+
+    Each dict must contain: id, anomaly_id, title, url.
+    Optional: source_name, source_domain, published_at, relevance.
+    Returns number of rows written.
+    """
+    if not articles:
+        return 0
+
+    sql = """
+        INSERT OR REPLACE INTO news_articles
+            (id, anomaly_id, source_name, source_domain,
+             title, url, published_at, relevance)
+        VALUES
+            (:id, :anomaly_id, :source_name, :source_domain,
+             :title, :url, :published_at, :relevance)
+    """
+    normalised = [
+        {
+            "id":            a["id"],
+            "anomaly_id":    a["anomaly_id"],
+            "source_name":   a.get("source_name"),
+            "source_domain": a.get("source_domain"),
+            "title":         a["title"],
+            "url":           a["url"],
+            "published_at":  a.get("published_at"),
+            "relevance":     a.get("relevance", 0.0),
+        }
+        for a in articles
+    ]
+    conn.executemany(sql, normalised)
+    conn.commit()
+    return len(normalised)
+
+
+def get_news_for_anomaly(
+    conn: sqlite3.Connection,
+    anomaly_id: str,
+) -> list[dict[str, Any]]:
+    """
+    Return cached news articles for an anomaly, sorted by relevance desc.
+    """
+    cursor = conn.execute(
+        """
+        SELECT id, anomaly_id, source_name, source_domain,
+               title, url, published_at, relevance
+        FROM   news_articles
+        WHERE  anomaly_id = ?
+        ORDER  BY relevance DESC
+        """,
+        (anomaly_id,),
+    )
+    columns = [col[0] for col in cursor.description]
+    return [dict(zip(columns, row)) for row in cursor.fetchall()]
