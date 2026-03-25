@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bitcoin Price Analyzer</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app">
+
+    <!-- Header -->
+    <header>
+      <h1>Bitcoin Price <span>Analyzer</span></h1>
+
+      <div class="legend">
+        <div class="legend-item">
+          <div class="legend-dot reversal"></div>
+          Reversal
+        </div>
+        <div class="legend-item">
+          <div class="legend-dot amplification"></div>
+          Amplification
+        </div>
+        <div class="legend-item">
+          <div class="legend-dot stagnation"></div>
+          Stagnation
+        </div>
+      </div>
+
+      <div class="header-spacer"></div>
+
+      <button id="controls-toggle">Parameters</button>
+    </header>
+
+    <!-- Collapsible controls panel -->
+    <div id="controls-panel">
+      <div class="controls-inner">
+        <div class="controls-grid" id="controls-grid">
+          <!-- populated by controls.js -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Main area: chart + news panel -->
+    <div id="main">
+
+      <!-- Chart -->
+      <div id="chart-wrap">
+        <div id="chart"></div>
+
+        <div id="loading-overlay" hidden>
+          <div class="spinner"></div>
+          <span id="loading-msg">Loading…</span>
+        </div>
+
+        <div id="error-banner" hidden></div>
+
+        <div id="click-hint">Click an anomaly marker to see related news</div>
+      </div>
+
+      <!-- News panel (hidden until an anomaly is clicked) -->
+      <div id="news-panel" class="hidden">
+        <div class="news-panel-header">
+          <span class="news-type-badge" id="news-type-badge"></span>
+          <span class="news-panel-date" id="news-panel-date"></span>
+          <button id="news-panel-close" title="Close">×</button>
+        </div>
+        <div id="news-panel-body"></div>
+      </div>
+
+    </div><!-- #main -->
+  </div><!-- #app -->
+
+  <!-- TradingView Lightweight Charts -->
+  <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+
+  <!-- App config — change API_BASE if your server runs elsewhere -->
+  <script>
+    window.API_BASE = 'http://localhost:8000';
+  </script>
+
+  <!-- Order matters: chart.js exposes loadAnomalies; controls.js calls it -->
+  <script src="chart.js"></script>
+  <script src="controls.js"></script>
+</body>
+</html>
